@@ -49,17 +49,26 @@ class Builder[T: HasId]:
     store(n, Extractor.S(f))
     this
 
+  def storeInt(n: String, f: T => Int) =
+    store(n, Extractor.I(f))
+    this
+
   def storeBool(n: String, f: T => Boolean) =
     store(n, Extractor.B(f))
     this
 
-  def reference[B: HasId](g: T => B) =
+  def reference[B: HasId](g: T => B | Null) =
     val b = summon[HasId[B]]
     store(
       b.entityName + "_id",
-      Extractor.S(t => b.identify(g(t)))
+      Extractor.S(t =>
+        g(t) match
+          case null => null
+          case s    => b.identify(s.nn)
+      )
     )
     this
+  end reference
 
   def selfReference(tpe: String, g: T => T | Null) =
     val b = summon[HasId[T]]
@@ -76,3 +85,4 @@ class Builder[T: HasId]:
 
   def build = Indexer(actions = b.result())
 end Builder
+

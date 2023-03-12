@@ -1,2 +1,2 @@
 enum FieldType:
-  case S, B
+  case S, B, I
