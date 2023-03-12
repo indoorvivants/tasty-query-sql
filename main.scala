@@ -4,34 +4,25 @@
 //> using lib "com.lihaoyi::os-lib:0.9.1"
 //> using lib "com.lihaoyi::pprint:0.8.1"
 //> using lib "com.lihaoyi::mainargs:0.4.0"
+//> using scala "3.3.0-RC3"
+//> using option "-Wunused:all"
 
-import annotations.ClassAnnotation
-import anorm.ParameterValue
 import org.h2.tools.Server
-import resource.Using
 import tastyquery.Annotations.Annotation
-import tastyquery.Classpaths.Classpath
 import tastyquery.Contexts
 import tastyquery.Contexts.Context
 import tastyquery.Flags
 import tastyquery.Symbols.ClassSymbol
-import tastyquery.Symbols.ClassTypeParamSymbol
-import tastyquery.Symbols.LocalTypeParamSymbol
 import tastyquery.Symbols.PackageSymbol
-import tastyquery.Symbols.TermSymbol
-import tastyquery.Symbols.TypeMemberSymbol
-import tastyquery.Trees.DefDef
-import tastyquery.Trees.ValDef
-import tastyquery.jdk.ClasspathLoaders
 
 import java.io.File
-import java.nio.file.Files
 import java.nio.file.Paths
 import java.sql.Connection
 import java.sql.DriverManager
-import scala.jdk.CollectionConverters.*
 import scala.reflect.ClassTag
-import scala.reflect.TypeTest
+import tastyquery.jdk.ClasspathLoaders
+import tastyquery.Trees.DefDef
+import scala.annotation.nowarn
 
 object Main:
   import mainargs.*
@@ -101,44 +92,6 @@ def forEachClass(cls: ClassSymbol => Unit)(using Context) =
     pkg.declarations.only[ClassSymbol].foreach(cls)
   }
 
-def populate[T: HasId](indexer: Indexer[T], values: Iterable[T])(using
-    Connection
-) =
-  import anorm.*
-  if values.nonEmpty then
-    val hi = summon[HasId[T]]
-    val schema = s"create table if not exists ${hi.relName} ${indexer.fields
-        .map {
-
-          case Field(nm, FieldType.S) =>
-            s"$nm VARCHAR"
-          case Field(nm, FieldType.B) =>
-            s"$nm BOOLEAN"
-          case Field(nm, FieldType.I) =>
-            s"$nm INTEGER"
-        }
-        .mkString("(", ", ", ")")}"
-
-    SQL(schema).execute()
-
-    values.foreach { v =>
-      loggyN(s"inserting $v") {
-        val row = indexer.go(v)
-        val nonNull = row.filter(_._2.nonEmpty).map(_._1).toList
-        val namesList = nonNull.map(_.name).mkString(", ")
-        val valuesList = nonNull.map("{" + _.name + "}").mkString(", ")
-        val n = nonNull.map(n =>
-          NamedParameter(n.name, row(n).map(_.asParameterValue).orNull)
-        )
-        val query = s"insert into ${hi.relName}($namesList) values($valuesList)"
-        SQL(query)
-          .on(n*)
-          .execute()
-      }
-    }
-  end if
-end populate
-
 def classId(symb: ClassSymbol) =
   symb.formatted
   val pkgHash = symb.fullName.path.dropRight(1).hashCode()
@@ -172,7 +125,7 @@ given HasId[DefDef] with
   def entityName = "method"
   def identify(v: DefDef): String = v.name.toDebugString
 
-def defdefBuilder(using Context) =
+def defdefBuilder =
   Builder[DefDef]
     .reference(_.symbol.enclosingDecl.as[ClassSymbol].orNull)
     .storeStr("name", _.name.toString())
@@ -204,12 +157,14 @@ def annotationBuilder(using Context) =
     .storeInt("arg_count", _.argCount)
 
 extension [A](collection: List[A])
+  @nowarn
   def only[C: ClassTag](using C <:< A): List[C] = collection.collect {
     case a: C =>
       a
   }
 
 extension [A](value: A)
+  @nowarn
   def as[C: ClassTag](using C <:< A): Option[C] = value match
     case a: C =>
       Some(a)
