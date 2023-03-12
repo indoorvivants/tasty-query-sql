@@ -5,6 +5,8 @@ Use [tasty-query](https://github.com/scalacenter/tasty-query), [H2](http://www.h
 At this point the relational schema is created manually, and is woefully incomplete. SQL might not even be the "right" language for this, but it for sure 
 is very well known.
 
+![Screenshot 2023-03-12 at 20 46 56](https://user-images.githubusercontent.com/1052965/224572706-87159648-3064-43b0-8d5c-9e13dc5f9805.png)
+
 ## Usage
 
 This is a Scala CLI project.
