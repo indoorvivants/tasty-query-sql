@@ -17,6 +17,18 @@ class RelBuilder[T](name: String):
     this
   end store
 
+  def storeFK(
+      n: String,
+      f: Extractor[T],
+      foreignKey: ForeignKey
+  ) =
+    b += BuildAction.Store(
+      getField(n, f).copy(foreignKey = Some(foreignKey)),
+      f
+    )
+    this
+  end storeFK
+
   def storeStr(n: String, f: T => String) =
     store(n, Extractor.S(f))
     this
@@ -30,13 +42,15 @@ class RelBuilder[T](name: String):
     this
 
   def reference[A: HasId, B: HasId](f: (String, T => A), g: (String, T => B)) =
-    store(
+    storeFK(
       f._1 + "_id",
-      Extractor.S(t => HasId[A].identify(f._2(t)))
+      Extractor.S(t => HasId[A].identify(f._2(t))),
+      ForeignKey(HasId[A].relName, "id")
     )
-    store(
+    storeFK(
       g._1 + "_id",
-      Extractor.S(t => HasId[B].identify(g._2(t)))
+      Extractor.S(t => HasId[B].identify(g._2(t))),
+      ForeignKey(HasId[B].relName, "id")
     )
     this
   end reference

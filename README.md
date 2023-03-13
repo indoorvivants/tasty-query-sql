@@ -14,7 +14,7 @@ This is a Scala CLI project.
 **Launch with default classpath** (i.e. the classpath of this application itself):
 
 ```bash
-$ scala-cli run . -- --start
+$ scala-cli run . -- --web
 ```
 
 This will start H2 database and open a web browser with SQL console.
@@ -22,7 +22,7 @@ This will start H2 database and open a web browser with SQL console.
 **Launch with any classpath** - use the `-c` flag, for example with coursier:
 
 ```bash
-$ scala-cli run . -- -c $(cs fetch -p com.indoorvivants.roach:core_native0.4_3:0.0.2) --start
+$ scala-cli run . -- -c $(cs fetch -p com.indoorvivants.roach:core_native0.4_3:0.0.2) --web
 ```
 
 This will start H2 database and open a web browser with SQL console.

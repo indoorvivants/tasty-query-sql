@@ -9,9 +9,11 @@ class Builder[T: HasId]:
       schema.add(inst)
       inst
 
-  store(
-    "id",
-    Extractor.S(summon[HasId[T]].identify)
+  private val idExtractor = Extractor.S(summon[HasId[T]].identify)
+
+  b += BuildAction.Store(
+    getField("id", idExtractor).copy(primaryKey = true),
+    idExtractor
   )
 
   def store(
@@ -21,6 +23,18 @@ class Builder[T: HasId]:
     b += BuildAction.Store(getField(n, f), f)
     this
   end store
+
+  def storeFK(
+      n: String,
+      f: Extractor[T],
+      foreignKey: ForeignKey
+  ) =
+    b += BuildAction.Store(
+      getField(n, f).copy(foreignKey = Some(foreignKey)),
+      f
+    )
+    this
+  end storeFK
 
   def storeStr(n: String, f: T => String) =
     store(n, Extractor.S(f))
@@ -36,26 +50,28 @@ class Builder[T: HasId]:
 
   def reference[B: HasId](g: T => B | Null) =
     val b = summon[HasId[B]]
-    store(
+    storeFK(
       b.entityName + "_id",
       Extractor.S(t =>
         g(t) match
           case null => null
           case s    => b.identify(s.nn)
-      )
+      ),
+      ForeignKey(b.relName, "id")
     )
     this
   end reference
 
   def selfReference(tpe: String, g: T => T | Null) =
     val b = summon[HasId[T]]
-    store(
+    storeFK(
       tpe + "_id",
       Extractor.S(t =>
         g(t) match
           case null => null
           case t    => b.identify(t.nn)
-      )
+      ),
+      ForeignKey(b.relName, "id")
     )
     this
   end selfReference

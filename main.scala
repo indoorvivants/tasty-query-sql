@@ -4,6 +4,7 @@
 //> using lib "com.lihaoyi::os-lib:0.9.1"
 //> using lib "com.lihaoyi::pprint:0.8.1"
 //> using lib "com.lihaoyi::mainargs:0.4.0"
+//> using lib "com.outr::scribe:3.11.1"
 //> using scala "3.3.0-RC3"
 //> using option "-Wunused:all"
 
@@ -25,6 +26,8 @@ import tastyquery.Trees.DefDef
 import scala.annotation.nowarn
 import java.nio.file.FileSystems
 import java.net.URI
+import scala.io.StdIn
+import scala.util.control.NoStackTrace
 
 object Main:
   import mainargs.*
@@ -32,14 +35,16 @@ object Main:
   def run(
       @arg(short = 'c', doc = "Classpath. Default: current JVM's classpath")
       classpath: String = System.getProperty("java.class.path"),
-      @arg(doc = "Start H2 server and console")
-      start: Flag = Flag(false)
+      @arg(doc = "Start H2 web console")
+      web: Flag = Flag(false),
+      @arg(doc = "Start H2 server ")
+      server: Flag = Flag(false)
   ) =
-    server(classpath, start.value)
+    start(classpath, web.value, server.value)
   def main(args: Array[String]): Unit = ParserForMethods(this).runOrExit(args)
 end Main
 
-def server(classpath: String, start: Boolean) =
+def start(classpath: String, web: Boolean, server: Boolean) =
   val fetched = classpath.split(File.pathSeparator).toList.map(Paths.get(_))
   val javaLib =
     // post java 9
@@ -63,15 +68,35 @@ def server(classpath: String, start: Boolean) =
   val cp = ClasspathLoaders.read(fetched ++ javaLib)
   given ctx: Context = Contexts.init(cp)
 
-  val url = "jdbc:h2:mem:./test"
+  val runningServer =
+    if server then
+      Some(
+        org.h2.tools.Server.createTcpServer("-tcpAllowOthers", "-ifNotExists")
+      )
+    else None
+
+  runningServer.map(_.start())
+
+  val url = "jdbc:h2:mem:db1"
+
+  println(url)
 
   scala.util.Using.resource(
     DriverManager.getConnection(url, "sa", "")
   ) { conn =>
     given Connection = conn
 
+    locally:
+        import anorm.*
+
+        SQL("SET REFERENTIAL_INTEGRITY FALSE").execute()
+
+    val allPackages = collector(forEachPackage)
+
+    populate(packageBuilder.build, allPackages)
+
     // Index classes
-    forEachPackage { pkg =>
+    allPackages.foreach { pkg =>
       val builder = classBuilder.reference(_ => pkg).build
 
       loggy {
@@ -82,10 +107,10 @@ def server(classpath: String, start: Boolean) =
     val builder = annotationBuilder.build
 
     forEachClass { cls =>
-      loggyN(s"annotations of $cls") {
-        val annots = cls.annotations
-        populate(builder, annots)
-      }
+      // loggyN(s"annotations of $cls") {
+      //   val annots = cls.annotations
+      //   populate(builder, annots)
+      // }
 
       loggyN(s"methods of $cls") {
         val methods = cls.declarations.flatMap(_.tree).flatMap(_.as[DefDef])
@@ -98,18 +123,30 @@ def server(classpath: String, start: Boolean) =
 
     }
 
-    if start then org.h2.tools.Server.startWebServer(conn)
+    if server then StdIn.readLine()
+    if web then org.h2.tools.Server.startWebServer(conn)
 
   }
-end server
+  runningServer.map(_.stop())
+end start
+
+def collector[A](f: (A => Unit) => Unit) =
+  val b = Vector.newBuilder[A]
+
+  f(a => b += a)
+
+  b.result()
 
 def forEachPackage(f: PackageSymbol => Unit)(using ctx: Context) =
   def go(pkg: PackageSymbol): Unit =
-    pkg.declarations.only[PackageSymbol].foreach { p =>
-      f(p)
-      go(p)
+    loggyN(s"recursing into $pkg") {
+      pkg.declarations.only[PackageSymbol].foreach { p =>
+        f(p)
+        go(p)
+      }
     }
   go(ctx.defn.RootPackage)
+end forEachPackage
 
 def forEachClass(cls: ClassSymbol => Unit)(using Context) =
   forEachPackage { pkg =>
@@ -117,20 +154,31 @@ def forEachClass(cls: ClassSymbol => Unit)(using Context) =
   }
 
 def classId(symb: ClassSymbol) =
-  symb.formatted
   val pkgHash = symb.fullName.path.dropRight(1).hashCode()
   s"${pkgHash}:${symb.name.toDebugString}"
 
-case class Field(name: String, tpe: FieldType)
+def methodId(symb: DefDef)(using Context) =
+  val declaring = symb.symbol.enclosingDecl.as[ClassSymbol].map(classId)
+  // symb.symbol.staticRef.name.toDebugString
+  declaring
+    .map(
+      _ + "/" + symb.name.toDebugString + symb.symbol.signature.toDebugString
+    )
+    .getOrElse(
+      err(s"Method ${symb.name} has enclosingDecl ${symb.symbol.enclosingDecl}")
+    )
+end methodId
 
-object annotations:
-  opaque type ClassAnnotation <: Annotation = Annotation
-  object ClassAnnotation:
-    def apply(s: Annotation): ClassAnnotation = s
-    given (using Context): HasId[ClassAnnotation] with
-      def entityName: String = "class_annotation"
-      def identify(ca: ClassAnnotation) =
-        classId(ca.symbol)
+def err(msg: String) = throw new RuntimeException(msg) with NoStackTrace
+
+case class ForeignKey(rel: String, field: String)
+
+case class Field(
+    name: String,
+    tpe: FieldType,
+    primaryKey: Boolean = false,
+    foreignKey: Option[ForeignKey] = None
+)
 
 given HasId[ClassSymbol] with
   def entityName: String = "class"
@@ -145,11 +193,11 @@ given (using Context): HasId[Annotation] with
   def identify(cls: Annotation) =
     summon[HasId[ClassSymbol]].identify(cls.symbol)
 
-given HasId[DefDef] with
+given (using Context): HasId[DefDef] with
   def entityName = "method"
-  def identify(v: DefDef): String = v.name.toDebugString
+  def identify(v: DefDef): String = methodId(v)
 
-def defdefBuilder =
+def defdefBuilder(using Context) =
   Builder[DefDef]
     .reference(_.symbol.enclosingDecl.as[ClassSymbol].orNull)
     .storeStr("name", _.name.toString())
@@ -161,6 +209,9 @@ def defdefBuilder =
     .storeBool("is_infix", _.symbol.is(Flags.Infix))
     .storeBool("is_final", _.symbol.is(Flags.Final))
     .storeBool("is_extension", _.symbol.is(Flags.Extension))
+
+def packageBuilder(using Context) =
+  Builder[PackageSymbol]
 
 def classBuilder(using Context) =
   Builder[ClassSymbol]
@@ -202,15 +253,12 @@ extension [A](value: A)
     case _ => None
 
 inline def loggyN[T](name: String)(e: => T): Option[T] =
-  try
-    val res = Some(e)
-    // println(s"[$name ✅]")
-    res
+  try Some(e)
   catch
     case exc =>
-      println(s"[$name ❌]" + exc.getMessage())
+      scribe.error(s"$name", exc.getMessage())
       None
 
 inline def loggy(e: => Unit) =
   try e
-  catch case exc => println("ERROR: " + exc.getMessage())
+  catch case exc => scribe.error(exc.getMessage())
