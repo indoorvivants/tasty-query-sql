@@ -1,4 +1,4 @@
-class Builder[T: HasId]:
+class RelBuilder[T](name: String):
   private val b = Vector.newBuilder[BuildAction[T]]
   private val schema = collection.mutable.Set.empty[Field]
 
@@ -8,11 +8,6 @@ class Builder[T: HasId]:
     else
       schema.add(inst)
       inst
-
-  store(
-    "id",
-    Extractor.S(summon[HasId[T]].identify)
-  )
 
   def store(
       n: String,
@@ -34,31 +29,17 @@ class Builder[T: HasId]:
     store(n, Extractor.B(f))
     this
 
-  def reference[B: HasId](g: T => B | Null) =
-    val b = summon[HasId[B]]
+  def reference[A: HasId, B: HasId](f: (String, T => A), g: (String, T => B)) =
     store(
-      b.entityName + "_id",
-      Extractor.S(t =>
-        g(t) match
-          case null => null
-          case s    => b.identify(s.nn)
-      )
+      f._1 + "_id",
+      Extractor.S(t => HasId[A].identify(f._2(t)))
+    )
+    store(
+      g._1 + "_id",
+      Extractor.S(t => HasId[B].identify(g._2(t)))
     )
     this
   end reference
 
-  def selfReference(tpe: String, g: T => T | Null) =
-    val b = summon[HasId[T]]
-    store(
-      tpe + "_id",
-      Extractor.S(t =>
-        g(t) match
-          case null => null
-          case t    => b.identify(t.nn)
-      )
-    )
-    this
-  end selfReference
-
-  def build = Indexer(actions = b.result(), tableName = HasId[T].relName)
-end Builder
+  def build = Indexer(actions = b.result(), tableName = name)
+end RelBuilder

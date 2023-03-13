@@ -1,5 +1,6 @@
 case class Indexer[T](
-    actions: Vector[BuildAction[T]]
+    actions: Vector[BuildAction[T]],
+    tableName: String
 ):
   def go(s: T) =
     val extracted = actions.map {

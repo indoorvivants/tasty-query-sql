@@ -23,6 +23,8 @@ import scala.reflect.ClassTag
 import tastyquery.jdk.ClasspathLoaders
 import tastyquery.Trees.DefDef
 import scala.annotation.nowarn
+import java.nio.file.FileSystems
+import java.net.URI
 
 object Main:
   import mainargs.*
@@ -39,8 +41,26 @@ end Main
 
 def server(classpath: String, start: Boolean) =
   val fetched = classpath.split(File.pathSeparator).toList.map(Paths.get(_))
+  val javaLib =
+    // post java 9
+    def fromJRT = FileSystems
+      .getFileSystem(URI.create("jrt:/"))
+      .getPath("modules/java.base")
+    // pre java 9
+    def fromBootCP =
+      for
+        bootClasspath <- Option(System.getProperty("sun.boot.class.path"))
+        rtJars <- Some(
+          bootClasspath.split(java.io.File.pathSeparatorChar).toList.filter {
+            path =>
+              path.endsWith("rt.jar") || path.endsWith("jce.jar") // crypto
+          }
+        )
+      yield rtJars.map(Paths.get(_))
+    fromBootCP.getOrElse(List(fromJRT))
+  end javaLib
 
-  val cp = ClasspathLoaders.read(fetched)
+  val cp = ClasspathLoaders.read(fetched ++ javaLib)
   given ctx: Context = Contexts.init(cp)
 
   val url = "jdbc:h2:mem:./test"
@@ -70,6 +90,10 @@ def server(classpath: String, start: Boolean) =
       loggyN(s"methods of $cls") {
         val methods = cls.declarations.flatMap(_.tree).flatMap(_.as[DefDef])
         populate(defdefBuilder.build, methods)
+      }
+
+      loggyN(s"parents of $cls") {
+        populate(classHierarchyBuilder.build, cls.parentClasses.map(cls -> _))
       }
 
     }
@@ -150,6 +174,13 @@ def classBuilder(using Context) =
     .storeBool("is_module", _.is(Flags.Module))
     .storeBool("is_class", _.isClass)
 end classBuilder
+
+def classHierarchyBuilder =
+  RelBuilder[(ClassSymbol, ClassSymbol)]("class_parents")
+    .reference[ClassSymbol, ClassSymbol](
+      "class" -> (_._1),
+      "parent" -> (_._2)
+    )
 
 def annotationBuilder(using Context) =
   Builder[Annotation]

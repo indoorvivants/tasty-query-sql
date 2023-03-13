@@ -8,3 +8,6 @@ trait HasId[T]:
     else if ends == 'y' then entityName.dropRight(1) + "ies"
     else entityName + "s"
 end HasId
+
+object HasId:
+  def apply[T](using hi: HasId[T]) = hi
