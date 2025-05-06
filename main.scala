@@ -1,13 +1,3 @@
-//> using lib "ch.epfl.scala::tasty-query:0.6.1"
-//> using lib "org.playframework.anorm::anorm:2.7.0"
-//> using lib "com.h2database:h2:2.1.214"
-//> using lib "com.lihaoyi::os-lib:0.9.1"
-//> using lib "com.lihaoyi::pprint:0.8.1"
-//> using lib "com.lihaoyi::mainargs:0.4.0"
-//> using lib "com.outr::scribe:3.11.1"
-//> using scala "3.3.0-RC3"
-//> using option "-Wunused:all"
-
 import org.h2.tools.Server
 import tastyquery.Annotations.Annotation
 import tastyquery.Contexts
@@ -66,7 +56,7 @@ def start(classpath: String, web: Boolean, server: Boolean) =
   end javaLib
 
   val cp = ClasspathLoaders.read(fetched ++ javaLib)
-  given ctx: Context = Contexts.init(cp)
+  given ctx: Context = Contexts.Context.initialize(cp)
 
   val runningServer =
     if server then
@@ -114,7 +104,7 @@ def start(classpath: String, web: Boolean, server: Boolean) =
 
       loggyN(s"methods of $cls") {
         val methods = cls.declarations.flatMap(_.tree).flatMap(_.as[DefDef])
-        populate(defdefBuilder.build, methods)
+        populate(defdefBuilder(cls).build, methods)
       }
 
       loggyN(s"parents of $cls") {
@@ -154,18 +144,18 @@ def forEachClass(cls: ClassSymbol => Unit)(using Context) =
   }
 
 def classId(symb: ClassSymbol) =
-  val pkgHash = symb.fullName.path.dropRight(1).hashCode()
+  val pkgHash = symb.name.hashCode()
   s"${pkgHash}:${symb.name.toDebugString}"
 
 def methodId(symb: DefDef)(using Context) =
-  val declaring = symb.symbol.enclosingDecl.as[ClassSymbol].map(classId)
+  val declaring = symb.symbol.owner.as[ClassSymbol].map(classId)
   // symb.symbol.staticRef.name.toDebugString
   declaring
     .map(
       _ + "/" + symb.name.toDebugString + symb.symbol.signature.toDebugString
     )
     .getOrElse(
-      err(s"Method ${symb.name} has enclosingDecl ${symb.symbol.enclosingDecl}")
+      err(s"Method ${symb.name} has no declaring class")
     )
 end methodId
 
@@ -197,18 +187,18 @@ given (using Context): HasId[DefDef] with
   def entityName = "method"
   def identify(v: DefDef): String = methodId(v)
 
-def defdefBuilder(using Context) =
+def defdefBuilder(cls: ClassSymbol)(using Context) =
   Builder[DefDef]
-    .reference(_.symbol.enclosingDecl.as[ClassSymbol].orNull)
+    .reference(_ => cls)
     .storeStr("name", _.name.toString())
-    .storeBool("is_abstract", _.symbol.is(Flags.Abstract))
-    .storeBool("is_private", _.symbol.is(Flags.Private))
-    .storeBool("is_protected", _.symbol.is(Flags.Protected))
-    .storeBool("is_override", _.symbol.is(Flags.Override))
-    .storeBool("is_inline", _.symbol.is(Flags.Inline))
-    .storeBool("is_infix", _.symbol.is(Flags.Infix))
-    .storeBool("is_final", _.symbol.is(Flags.Final))
-    .storeBool("is_extension", _.symbol.is(Flags.Extension))
+    // .storeBool("is_abstract", _.symbol.owner.isAbstractClass)
+    .storeBool("is_private", _.symbol.isPrivate)
+  // .storeBool("is_protected", _.symbol.isProtected)
+  // .storeBool("is_override", _.symbol.is(Flags.Override))
+  // .storeBool("is_inline", _.symbol.is(Flags.Inline))
+  // .storeBool("is_infix", _.symbol.is(Flags.Infix))
+  // .storeBool("is_final", _.symbol.is(Flags.Final))
+  // .storeBool("is_extension", _.symbol.is(Flags.Extension))
 
 def packageBuilder(using Context) =
   Builder[PackageSymbol]
@@ -217,12 +207,12 @@ def classBuilder(using Context) =
   Builder[ClassSymbol]
     .selfReference("companion_class", _.companionClass.orNull)
     .storeStr("name", _.name.toString)
-    .storeBool("is_abstract", _.is(Flags.Abstract))
-    .storeBool("is_case", _.is(Flags.Case))
-    .storeBool("is_private", _.is(Flags.Private))
-    .storeBool("is_sealed", _.is(Flags.Private))
-    .storeBool("is_trait", _.is(Flags.Trait))
-    .storeBool("is_module", _.is(Flags.Module))
+    .storeBool("is_abstract", _.isAbstractClass)
+    .storeBool("is_case", _.isCaseClass)
+    // .storeBool("is_private", _.is(Flags.Private))
+    // .storeBool("is_sealed", _.is(Flags.Private))
+    // .storeBool("is_trait", _.is(Flags.Trait))
+    // .storeBool("is_module", _.is(Flags.Module))
     .storeBool("is_class", _.isClass)
 end classBuilder
 

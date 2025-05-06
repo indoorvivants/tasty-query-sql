@@ -1,0 +1,59 @@
+# Compiled class files
+*.class
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+
+# Scala and Java binaries
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# IDE specific files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# SBT specific files
+target/
+project/target/
+project/project/
+
+# ScalaTest reports
+test-reports/
+
+# MacOS specific files
+.DS_Store
+
+# Generated files
+*.class
+*.cache
+*.log
+*.out
+*.tmp
+
+# Coverage reports
+coverage/
+.coverage
+
+# Dependency caches
+lib_managed/
+src_managed/
+.cache/
+.history/
+
+# Build artifacts
+dist/
+build/.scala-build
+.metals
+.bsp
+.scala-build
