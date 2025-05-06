@@ -191,14 +191,12 @@ def defdefBuilder(cls: ClassSymbol)(using Context) =
   Builder[DefDef]
     .reference(_ => cls)
     .storeStr("name", _.name.toString())
-    // .storeBool("is_abstract", _.symbol.owner.isAbstractClass)
     .storeBool("is_private", _.symbol.isPrivate)
-  // .storeBool("is_protected", _.symbol.isProtected)
-  // .storeBool("is_override", _.symbol.is(Flags.Override))
-  // .storeBool("is_inline", _.symbol.is(Flags.Inline))
-  // .storeBool("is_infix", _.symbol.is(Flags.Infix))
-  // .storeBool("is_final", _.symbol.is(Flags.Final))
-  // .storeBool("is_extension", _.symbol.is(Flags.Extension))
+    .storeBool("is_override", _.symbol.isAbstractOverride)
+    .storeBool("is_inline", _.symbol.isInline)
+    .storeBool("is_final", _.symbol.isFinalMember)
+    .storeBool("is_extension", _.symbol.isExtensionMethod)
+    .storeBool("is_infix", _.symbol.isInfix)
 
 def packageBuilder(using Context) =
   Builder[PackageSymbol]
@@ -209,10 +207,9 @@ def classBuilder(using Context) =
     .storeStr("name", _.name.toString)
     .storeBool("is_abstract", _.isAbstractClass)
     .storeBool("is_case", _.isCaseClass)
-    // .storeBool("is_private", _.is(Flags.Private))
-    // .storeBool("is_sealed", _.is(Flags.Private))
-    // .storeBool("is_trait", _.is(Flags.Trait))
-    // .storeBool("is_module", _.is(Flags.Module))
+    .storeBool("is_private", _.isPrivate)
+    .storeBool("is_trait", _.isTrait)
+    // .storeBool("is_module", _.isModule)
     .storeBool("is_class", _.isClass)
 end classBuilder
 
